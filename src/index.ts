@@ -252,6 +252,18 @@ export default {
     const ipHash = await hashIP(ip);
 
     try {
+      // POST /api/post-stats (views + likes in one call)
+      if (url.pathname === "/api/post-stats" && request.method === "POST") {
+        const body = (await request.json()) as { slug?: string };
+        if (!body.slug) return jsonResponse({ error: "slug required" }, 400, origin, allowed);
+        const [views, likes, liked] = await Promise.all([
+          incrementViews(body.slug, ipHash, env),
+          getLikes(body.slug, env),
+          checkLiked(body.slug, ipHash, env),
+        ]);
+        return jsonResponse({ views, likes, liked }, 200, origin, allowed);
+      }
+
       // POST /api/views
       if (url.pathname === "/api/views" && request.method === "POST") {
         const body = (await request.json()) as { slug?: string };
