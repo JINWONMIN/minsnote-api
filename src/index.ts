@@ -63,6 +63,36 @@ async function incrementViews(slug: string, ipHash: string, env: Env): Promise<n
   return next;
 }
 
+// ── Likes ──
+
+async function getLikes(slug: string, env: Env): Promise<number> {
+  const val = await env.VIEWS.get(`likes:${slug}`);
+  return val ? parseInt(val, 10) : 0;
+}
+
+async function toggleLike(slug: string, ipHash: string, env: Env): Promise<{ likes: number; liked: boolean }> {
+  const likedKey = `liked:${slug}:${ipHash}`;
+  const already = await env.VIEWS.get(likedKey);
+  const current = await getLikes(slug, env);
+
+  if (already) {
+    const next = Math.max(0, current - 1);
+    await env.VIEWS.put(`likes:${slug}`, next.toString());
+    await env.VIEWS.delete(likedKey);
+    return { likes: next, liked: false };
+  }
+
+  const next = current + 1;
+  await env.VIEWS.put(`likes:${slug}`, next.toString());
+  await env.VIEWS.put(likedKey, "1");
+  return { likes: next, liked: true };
+}
+
+async function checkLiked(slug: string, ipHash: string, env: Env): Promise<boolean> {
+  const val = await env.VIEWS.get(`liked:${slug}:${ipHash}`);
+  return val !== null;
+}
+
 // ── Visitors ──
 
 async function trackVisitor(ipHash: string, env: Env): Promise<{ today: number; total: number }> {
@@ -236,6 +266,23 @@ export default {
         if (!slug) return jsonResponse({ error: "slug required" }, 400, origin, allowed);
         const views = await getViews(slug, env);
         return jsonResponse({ views }, 200, origin, allowed);
+      }
+
+      // GET /api/likes?slug=xxx
+      if (url.pathname === "/api/likes" && request.method === "GET") {
+        const slug = url.searchParams.get("slug");
+        if (!slug) return jsonResponse({ error: "slug required" }, 400, origin, allowed);
+        const likes = await getLikes(slug, env);
+        const liked = await checkLiked(slug, ipHash, env);
+        return jsonResponse({ likes, liked }, 200, origin, allowed);
+      }
+
+      // POST /api/likes (toggle)
+      if (url.pathname === "/api/likes" && request.method === "POST") {
+        const body = (await request.json()) as { slug?: string };
+        if (!body.slug) return jsonResponse({ error: "slug required" }, 400, origin, allowed);
+        const result = await toggleLike(body.slug, ipHash, env);
+        return jsonResponse(result, 200, origin, allowed);
       }
 
       // POST /api/visitors
