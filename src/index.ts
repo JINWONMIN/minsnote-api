@@ -166,6 +166,10 @@ async function createComment(
   if (!nickname.trim() || nickname.length > 30) {
     return { success: false, error: "닉네임은 1~30자여야 합니다." };
   }
+  const reserved = ["minsnote", "민스노트", "민즈노트"];
+  if (reserved.some((r) => nickname.trim().toLowerCase() === r.toLowerCase())) {
+    return { success: false, error: "사용할 수 없는 닉네임입니다." };
+  }
   if (!content.trim() || content.length > 2000) {
     return { success: false, error: "댓글은 1~2000자여야 합니다." };
   }
