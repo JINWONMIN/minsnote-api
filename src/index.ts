@@ -3,6 +3,7 @@ export interface Env {
   DB: D1Database;
   ALLOWED_ORIGIN: string;
   API_KEY: string;
+  ADMIN_TOKEN: string;
 }
 
 const RATE_LIMIT_SECONDS = 60;
@@ -155,6 +156,7 @@ async function createComment(
   password: string,
   parentId: number | null,
   ipHash: string,
+  isAdmin: boolean,
   env: Env
 ): Promise<{ success: boolean; error?: string }> {
   const rateLimitKey = `ratelimit:comment:${ipHash}`;
@@ -167,7 +169,7 @@ async function createComment(
     return { success: false, error: "닉네임은 1~30자여야 합니다." };
   }
   const reserved = ["minsnote", "민스노트", "민즈노트"];
-  if (reserved.some((r) => nickname.trim().toLowerCase() === r.toLowerCase())) {
+  if (!isAdmin && reserved.some((r) => nickname.trim().toLowerCase() === r.toLowerCase())) {
     return { success: false, error: "사용할 수 없는 닉네임입니다." };
   }
   if (!content.trim() || content.length > 2000) {
@@ -323,11 +325,12 @@ export default {
 
       // POST /api/comments
       if (url.pathname === "/api/comments" && request.method === "POST") {
-        const body = (await request.json()) as { slug?: string; nickname?: string; content?: string; password?: string; parent_id?: number | null };
+        const body = (await request.json()) as { slug?: string; nickname?: string; content?: string; password?: string; parent_id?: number | null; admin_token?: string };
         if (!body.slug || !body.nickname || !body.content || !body.password) {
           return jsonResponse({ error: "slug, nickname, content, password required" }, 400, origin, allowed);
         }
-        const result = await createComment(body.slug, body.nickname, body.content, body.password, body.parent_id ?? null, ipHash, env);
+        const isAdmin = !!env.ADMIN_TOKEN && body.admin_token === env.ADMIN_TOKEN;
+        const result = await createComment(body.slug, body.nickname, body.content, body.password, body.parent_id ?? null, ipHash, isAdmin, env);
         if (!result.success) {
           return jsonResponse({ error: result.error }, 429, origin, allowed);
         }
