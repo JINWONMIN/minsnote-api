@@ -199,14 +199,17 @@ async function createComment(
 async function deleteComment(
   id: number,
   password: string,
+  isAdmin: boolean,
   env: Env
 ): Promise<{ success: boolean; error?: string }> {
   const row = await env.DB.prepare("SELECT password_hash FROM comments WHERE id = ?").bind(id).first();
   if (!row) return { success: false, error: "댓글을 찾을 수 없습니다." };
 
-  const pwHash = await hashPassword(password);
-  if (row.password_hash !== pwHash) {
-    return { success: false, error: "비밀번호가 일치하지 않습니다." };
+  if (!isAdmin) {
+    const pwHash = await hashPassword(password);
+    if (row.password_hash !== pwHash) {
+      return { success: false, error: "비밀번호가 일치하지 않습니다." };
+    }
   }
 
   await env.DB.prepare("DELETE FROM comments WHERE id = ?").bind(id).run();
@@ -217,14 +220,17 @@ async function updateComment(
   id: number,
   content: string,
   password: string,
+  isAdmin: boolean,
   env: Env
 ): Promise<{ success: boolean; error?: string }> {
   const row = await env.DB.prepare("SELECT password_hash FROM comments WHERE id = ?").bind(id).first();
   if (!row) return { success: false, error: "댓글을 찾을 수 없습니다." };
 
-  const pwHash = await hashPassword(password);
-  if (row.password_hash !== pwHash) {
-    return { success: false, error: "비밀번호가 일치하지 않습니다." };
+  if (!isAdmin) {
+    const pwHash = await hashPassword(password);
+    if (row.password_hash !== pwHash) {
+      return { success: false, error: "비밀번호가 일치하지 않습니다." };
+    }
   }
 
   if (!content.trim() || content.length > 2000) {
@@ -339,11 +345,12 @@ export default {
 
       // PUT /api/comments (edit)
       if (url.pathname === "/api/comments" && request.method === "PUT") {
-        const body = (await request.json()) as { id?: number; content?: string; password?: string };
-        if (!body.id || !body.content || !body.password) {
+        const body = (await request.json()) as { id?: number; content?: string; password?: string; admin_token?: string };
+        const isAdmin = !!env.ADMIN_TOKEN && body.admin_token === env.ADMIN_TOKEN;
+        if (!body.id || !body.content || (!body.password && !isAdmin)) {
           return jsonResponse({ error: "id, content, password required" }, 400, origin, allowed);
         }
-        const result = await updateComment(body.id, body.content, body.password, env);
+        const result = await updateComment(body.id, body.content, body.password || "", isAdmin, env);
         if (!result.success) {
           return jsonResponse({ error: result.error }, result.error === "비밀번호가 일치하지 않습니다." ? 403 : 400, origin, allowed);
         }
@@ -352,11 +359,12 @@ export default {
 
       // DELETE /api/comments
       if (url.pathname === "/api/comments" && request.method === "DELETE") {
-        const body = (await request.json()) as { id?: number; password?: string };
-        if (!body.id || !body.password) {
+        const body = (await request.json()) as { id?: number; password?: string; admin_token?: string };
+        const isAdmin = !!env.ADMIN_TOKEN && body.admin_token === env.ADMIN_TOKEN;
+        if (!body.id || (!body.password && !isAdmin)) {
           return jsonResponse({ error: "id, password required" }, 400, origin, allowed);
         }
-        const result = await deleteComment(body.id, body.password, env);
+        const result = await deleteComment(body.id, body.password || "", isAdmin, env);
         if (!result.success) {
           return jsonResponse({ error: result.error }, result.error === "비밀번호가 일치하지 않습니다." ? 403 : 400, origin, allowed);
         }
